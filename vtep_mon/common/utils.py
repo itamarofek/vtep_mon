@@ -1,6 +1,7 @@
 import shlex
 import time
 import os
+import re
 
 from oslo_concurrency import processutils
 from oslo_config import cfg
@@ -12,7 +13,7 @@ import subprocess
 
 LOG = logging.getLogger(__name__)
 
-CONF = cfg.CN
+CONF = cfg.CONF
 
 
 def _get_root_helper():
@@ -21,6 +22,12 @@ def _get_root_helper():
     else:
         cmd = 'sudo /usr/bin/rootwrap %s' % CONF.rootwrap_config
     return cmd
+
+def add_to_exe_path(path, as_prefix=True):
+    if as_prefix:
+        os.environ["PATH"] = path + os.pathsep + os.environ["PATH"]
+    else:
+        os.environ["PATH"] += os.pathsep + path
 
 def execute(*cmd, **kwargs):
     """Convenience wrapper around oslo's execute() method."""
@@ -54,20 +61,32 @@ def launch(*cmd, **kwargs):
         time.sleep(0)
 
 
-def process_exist(words):
-    s = subprocess.Popen(["ps", "ax"], stdout=subprocess.PIPE)
-    for x in s.stdout:
-        fi = True
-        for word in words:
-            if word not in x:
-                fi = False
-                break
-        if fi:
-            return x.split()[0]
+def process_exist(proc_name):
+    ps = subprocess.Popen("ps ax -o pid= -o args= ", shell=True, stdout=subprocess.PIPE)
+    ps_pid = ps.pid
+    output = ps.stdout.read()
+    ps.stdout.close()
+    ps.wait()
+
+    for line in output.split("\n"):
+        res = re.findall("(\d+) (.*)", line)
+        if res:
+            pid = int(res[0][0])
+            if proc_name in res[0][1] and pid != os.getpid() and pid != ps_pid:
+                return True
     return False
 
+def create_tap_device(device):
+    execute( 'ip' ,'tuntap', 'add', 'dev',device, 'mode', 'tap')
+
+def add_port_to_bridge(bridge,port, replace = True):
+    if replace:
+        ovs_vsctl(['--if-exists', 'del-port', bridge, port])
+    ovs_vsctl(['--may-exist','add-port', bridge, port])
+
+
 def get_mac(nic):
-    r = execute('cat', '/sys/class/net/%s/address' % nic)
+    executer = execute('cat', '/sys/class/net/%s/address' % nic)
     return r[0].strip()
 
 
@@ -76,6 +95,16 @@ def device_exists(device):
     return os.path.exists('/sys/class/net/%s' % device)
 
 
+def ifup_down(device, up = True):
+    if device_exists(device):
+        if up:
+            execute('ifup',device,run_as_root=True)
+        else:
+            execute('ifdown',device,run_as_root=True)
+        return True
+    else:
+        return False
+ 
 def netns_exists(name):
     output = execute('ip', 'netns', 'list',
                      run_as_root=True)[0]
@@ -140,36 +169,50 @@ def ovsdb_tool(args):
     cmd = ['ovsdb-tool' ] + args
     return execute(*cmd, run_as_root=True)
 
+def ovs_vsctl(args):
+    full_args = ['ovs-vsctl', '--timeout=%s' % CONF.ovs_vsctl_timeout] + args
+    return execute(*full_args, run_as_root=True)
+
+def add_ovs_bridge(br_name):
+    ovs_vsctl(['--may-exist', 'add-br', br_name])
+
 def ovs_appctl(args):
-    cmd = ['ovs-appctl' ] + args
+    cmd = ['ovs-appctl'] + args
     return execute(*cmd, run_as_root=True)
 
 def vtep_ctl(args):
-    bin_path = 'PATH=%s:${PATH}' % os.path.expanduser(CONF.vtep_path)
-    cmd = [bin_path, 'vtep-ctl' ] + args    
+    print args
+    cmd = ['vtep-ctl'] + args
     return execute(*cmd, run_as_root=True)
 
 def ovs_vtep(args):
-    bin_path = 'PATH=%s:${PATH}' % os.path.expanduser(CONF.vtep_path)
-    cmd = [bin_path, 'ovs-vtep' ] + args    
+    cmd = ['ovs-vtep'] + args
     return execute(*cmd, run_as_root=True)
 
-def start_ovs_vtep(ip_list,run_as_deamon=True):
-    create_vtep_db()
-    vtep_ctl('add-ps','sw1')
-    vtep-ctl('set', 'Physical_Switch', 'sw1', 'tunnel_ips='', '.join(ip_list))
-    args = ['--log-file=/var/log/openvswitch/ovs-vtep.log', '--pidfile=/var/run/openvswitch/ovs-vtep.pid', 'sw1' ]
+def start_ovs_vtep(switch,ip_list,run_as_deamon=True):
+    vtep_ctl(['add-ps', switch])
+    vtep_ctl(['set', 'Physical_Switch', switch, 'tunnel_ips=%s' % ",".join(ip_list)])
+    args = ['--log-file=/var/log/openvswitch/ovs-vtep.log',
+            '--pidfile=/var/run/openvswitch/ovs-vtep.pid', switch ]
     if run_as_deamon:
         args += ['--detach']
     ovs_vtep (args)
-    
-def create_vtep_db( remove_old=True):
+
+def create_vtep_db(db_file,vtep_path,port=6640,remove_old=True):
     if remove_old:
         try:
-            os.remove(CONF.vtep_db_file)
+            execute('service', 'openvswitch-switch', 'stop')
+            time.sleep(1)
+            os.remove(db_file)
+            execute('service', 'openvswitch-switch', 'start')
         except OSError:
-            pass    
-    ovsdb_tool( 'create', CONF.vtep_db_file, 'CONF.vtep_path' + '/vtep.ovsschema')
-    ovs_appctl( '-t', 'ovsdb-server', 'ovsdb-server/add-db', CONF.vtep_db_file)
+            pass
+    ovsdb_tool( ['create', db_file,
+           vtep_path + '/vtep.ovsschema'])
+    ovs_appctl([ '-t', 'ovsdb-server', 'ovsdb-server/add-db',
+            db_file ])
+    ovs_appctl(['-t', 'ovsdb-server', 'ovsdb-server/add-remote',
+               'ptcp:%s' % port])
+
 
 

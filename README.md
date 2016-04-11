@@ -7,7 +7,7 @@ apt-get update && apt-get upgrade
 
 apt-get install git
 
-apt-get install openvswitch-switch
+apt-get install openvswitch-switch python-openvswitch
 
 apt-get install python-oslo.config python-oslo.messaging python-oslo.rootwrap
 
