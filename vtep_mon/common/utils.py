@@ -73,8 +73,8 @@ def process_exist(proc_name):
         if res:
             pid = int(res[0][0])
             if proc_name in res[0][1] and pid != os.getpid() and pid != ps_pid:
-                return True
-    return False
+                return pid
+    return None
 
 def create_tap_device(device):
     execute( 'ip' ,'tuntap', 'add', 'dev',device, 'mode', 'tap')
@@ -201,10 +201,13 @@ def start_ovs_vtep(switch,ip_list,run_as_deamon=True):
 def create_vtep_db(db_file,vtep_path,port=6640,remove_old=True):
     if remove_old:
         try:
-            execute('service', 'openvswitch-switch', 'stop')
+            pid = process_exist('ovs-vtep')
+            if pid :
+                execute('kill', '-HUP', pid, run_as_root=True )
+            execute('service', 'openvswitch-switch', 'stop', run_as_root=True)
             time.sleep(1)
             os.remove(db_file)
-            execute('service', 'openvswitch-switch', 'start')
+            execute('service', 'openvswitch-switch', 'start',run_as_root=True)
         except OSError:
             pass
     ovsdb_tool( ['create', db_file,
