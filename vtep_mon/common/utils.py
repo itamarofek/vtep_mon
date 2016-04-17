@@ -77,7 +77,7 @@ def process_exist(proc_name):
     return False
 
 def create_tap_device(device):
-    execute( 'ip' ,'tuntap', 'add', 'dev',device, 'mode', 'tap')
+    execute( 'ip' ,'tuntap', 'add', 'dev',device, 'mode', 'tap',run_as_root=True)
 
 def add_port_to_bridge(bridge,port, replace = True):
     if replace:
@@ -201,10 +201,10 @@ def start_ovs_vtep(switch,ip_list,run_as_deamon=True):
 def create_vtep_db(db_file,vtep_path,port=6640,remove_old=True):
     if remove_old:
         try:
-            execute('service', 'openvswitch-switch', 'stop')
+            execute('service', 'openvswitch-switch', 'stop',run_as_root=True)
             time.sleep(1)
             os.remove(db_file)
-            execute('service', 'openvswitch-switch', 'start')
+            execute('service', 'openvswitch-switch', 'start',run_as_root=True)
         except OSError:
             pass
     ovsdb_tool( ['create', db_file,
