@@ -77,7 +77,7 @@ def process_exist(proc_name):
     return None
 
 def create_tap_device(device):
-    execute( 'ip' ,'tuntap', 'add', 'dev',device, 'mode', 'tap')
+    execute( 'ip' ,'tuntap', 'add', 'dev',device, 'mode', 'tap', run_as_root=True)
 
 def add_port_to_bridge(bridge,port, replace = True):
     if replace:
