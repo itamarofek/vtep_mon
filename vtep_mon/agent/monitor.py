@@ -43,13 +43,29 @@ class VtepMonitor(object):
         self.tunnel_ips = tunnel_ips
         self.routbale_device = routbale_device
         self.cfg = cfg
-        print ("tunnel_ips = %s,routbale_device = %s" %(self.tunnel_ips,self.routbale_device))
+        self.__set_switch_name()
+        print ("tunnel_ips = %s,switch name = %s" %(self.tunnel_ips,self.sw_name))
 
+    def __set_switch_name(self):
+        if '@' in self.cfg.CONF.monitor.switch:
+            name = self.cfg.CONF.monitor.switch.split('@')
+            if len(name) == 2 and name [1] == 'HOSTIP'
+            self.sw_name = name + '@' + self.tunnel_ips[0]
+        else:
+            self.sw_name = self.cfg.CONF.monitor.switch
+
+    def get_empty_db_path(self):
+        return "%s/%s.db" %(os.path.dirname(self.cfg.CONF.monitor.vtep_path,self.sw_name)
+    
     def __initialze_db(self):
-        utils.create_vtep_db(self.cfg.CONF.monitor.vtep_db_file,self.cfg.CONF.monitor.vtep_path)
+        if not os.path.isfile(self.get_empty_db_path()):
+            utils.create_empty_vtep_db(self.get_empty_db_path(), self.sw_name)
+        utils.create_vtep_db(self.cfg.CONF.monitor.vtep_db_file,
+                             self.get_empty_db_path(),
+                             self.cfg.CONF.monitor.vtep_path)
 
     def __create_bridge(self):
-        utils.add_ovs_bridge(self.cfg.CONF.monitor.switch)
+        utils.add_ovs_bridge(self.sw_name)
 
 
     def start_vtep_device(self):
@@ -62,14 +78,18 @@ class VtepMonitor(object):
         utils.add_port_to_bridge(self.cfg.CONF.monitor.switch,self.cfg.CONF.monitor.phy_interface)
         if self.routbale_device:
             utils.ifup_down(self.routbale_device)
-        utils.start_ovs_vtep(self.cfg.CONF.monitor.switch,self.tunnel_ips)
+        utils.start_ovs_vtep(self.cfg.CONF.monitor.switch,self.tunnel_ips,
+                             self.cfg.CONF.auto_flood,
+                             self.cfg.CONF.mtu_fragment)
 
 def main():
     config.init(sys.argv[1:])
-    print config.cfg.CONF.tunnel_ips
-    #import pdb
-    #pdb.set_trace()
-    agent = VtepMonitor(config.cfg,config.cfg.CONF.tunnel_ips,config.cfg.CONF.monitor.fip_device)
+    tunnel_ips = list()
+    if cfg.CONF.tunnel_ifs:
+        tunnel_ips = utils.get_interfaces_ips(config.cfg.CONF.tunnel_ifs)
+    else:
+        tunnel_ips = config.cfg.CONF.tunnel_ips
+    agent = VtepMonitor(config.cfg,tunnel_ips,config.cfg.CONF.monitor.fip_device)
     # Start everything.
     agent.start_vtep_device()
     LOG.info(_LI("Agent initialized successfully, now running. "))

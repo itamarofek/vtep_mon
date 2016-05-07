@@ -60,7 +60,9 @@ def launch(*cmd, **kwargs):
     finally:
         time.sleep(0)
 
-
+def kill_pid(pid)
+    execute('kill', pid)
+    
 def process_exist(proc_name):
     ps = subprocess.Popen("ps ax -o pid= -o args= ", shell=True, stdout=subprocess.PIPE)
     ps_pid = ps.pid
@@ -149,7 +151,7 @@ def get_nic_cidr(eth, restart=False):
                 if '/' in a:
                     ip = a
     if ip:
-        return ip
+        return ip.split('/')
     if restart:
         execute('ifdown', eth, run_as_root=True)
         execute('ifup', eth, run_as_root=True)
@@ -189,17 +191,37 @@ def ovs_vtep(args):
     cmd = ['ovs-vtep'] + args
     return execute(*cmd, run_as_root=True)
 
-def start_ovs_vtep(switch,ip_list,run_as_deamon=True):
-    vtep_ctl(['add-ps', switch])
+def start_ovs_vtep(switch,ip_list,run_as_deamon=True,mtu_fragment=False):
     vtep_ctl(['set', 'Physical_Switch', switch, 'tunnel_ips=%s' % ",".join(ip_list)])
     args = ['--log-file=/var/log/openvswitch/ovs-vtep.log',
             '--pidfile=/var/run/openvswitch/ovs-vtep.pid', switch ]
+    if auto_flood:
+        args += ['--auto_flood']
+    if not mtu_fragment:
+         args += ['--fragment']
     if run_as_deamon:
         args += ['--detach']
     ovs_vtep (args)
 
-def create_vtep_db(db_file,vtep_path,port=6640,remove_old=True):
-    if remove_old:
+def create_empty_vtep_db(db_file, switch_name):
+    ovsdb_tool(['create', db_file,vtep_path + '/vtep.ovsschema'])
+    ovs_dir = os.path.dirname(db_file)
+    execute('OVS_RUNDIR=%s' % ovs_dir, 'OVS_LOGDIR=%s' % ovs_dir,
+            'OVS_DBDIR=%s'  % ovs_dir, 'OVS_SYSCONFDIR=%s' % ovs_dir,
+            'OVS_PKGDATADIR=%s' % ovs_dir, 'ovsdb-server',
+            '--detach', '--no-chdir' ,'--pidfile=%s/pid' % os_dir,
+            '--remote=ptcp:54999' '--unixctl=%s/unixctl' %ovs_dir, db_file )
+    vtep_ctl( ['--timeout=5', '-vreconnect:emer', '--db=tcp:127.0.0.1:54999',
+              'add-ps', switch_name])
+    ovs_pid = None
+    with open('%s/pid' % os_dir, 'r') as infile:
+        ovs_pid = infile.readline()
+        kill_pid(ovs_pid)
+
+
+
+def create_vtep_db(db_file,empty_vtep_db,vtep_path,port=6640,remove_old=True):
+    if remove_old:service', 'openvswitch-switch', 'stop
         try:
             pid = process_exist('ovs-vtep')
             if pid :
@@ -210,12 +232,17 @@ def create_vtep_db(db_file,vtep_path,port=6640,remove_old=True):
             execute('service', 'openvswitch-switch', 'start',run_as_root=True)
         except OSError:
             pass
-    ovsdb_tool( ['create', db_file,
-           vtep_path + '/vtep.ovsschema'])
+    execute( 'cp', empty_vtep_db, db_file )
     ovs_appctl([ '-t', 'ovsdb-server', 'ovsdb-server/add-db',
             db_file ])
     ovs_appctl(['-t', 'ovsdb-server', 'ovsdb-server/add-remote',
                'ptcp:%s' % port])
 
 
-
+def get_interfaces_ips( interface_list):
+    if not interface_list:
+        return None
+    ip_list = list()
+    for if_device in interface_list:
+            ip_list.insert(get_nic_cidr(if_device)[0])
+    return ip_list

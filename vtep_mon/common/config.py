@@ -9,8 +9,12 @@ from vtep_mon.agent import version
 cfg = oslo_config.cfg
 opts = [
     cfg.MultiOpt('tunnel_ips',item_type=oslo_config.types.IPAddress(version=4),
-                  required=True,
+                  required=False,
                   help="ip list of the vtep switch tunnels")
+    cfg.MultiOpt('tunnel_ifs',help="list of vtep nics for tunnel_ips termination end point")
+    cfg.BoolOpt('auto_flood', help='enable default auto_floodind',default = True)
+    cfg.BoolOpt('mtu_fragment', help='auto detect importutils', default = False )
+	
 ]
 cfg.CONF.register_cli_opts(opts)
 cfg.CONF.import_opt('ovs_vsctl_timeout', 'nova.network.linux_net')
@@ -19,7 +23,7 @@ monitor_opts = [
     cfg.StrOpt('fip_device', help=_('name of the detachable data-network device')),
     cfg.StrOpt('phy_interface', default='tap0',
                  help=_('name of the psuedo phyiscal interface.')),
-    cfg.StrOpt('switch', default='br_vtep',
+    cfg.StrOpt('switch', default='br-vtep@HOSTIP',
                  help=_('name of the vtep ovs switch.')),
     cfg.StrOpt('vtep_db_file', default='/etc/openvswitch/vtep.db',
                 help=_('path to the vtep_db_file')),
