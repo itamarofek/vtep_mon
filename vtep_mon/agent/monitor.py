@@ -49,20 +49,28 @@ class VtepMonitor(object):
     def __set_switch_name(self):
         if '@' in self.cfg.CONF.monitor.switch:
             name = self.cfg.CONF.monitor.switch.split('@')
-            if len(name) == 2 and name [1] == 'HOSTIP'
-            self.sw_name = name + '@' + self.tunnel_ips[0]
-        else:
-            self.sw_name = self.cfg.CONF.monitor.switch
+            if len(name) == 2 and name [1] == 'HOSTIP':
+                self.sw_name = "%s@%s" % ( name[0] , self.tunnel_ips[0])
+                return
+        self.sw_name = self.cfg.CONF.monitor.switch
+
+    def __initialze_db(self):
+	empty_db_path = self.get_empty_db_path()
+        if False == os.path.isfile(empty_db_path):
+            utils.create_empty_vtep_db(self.cfg.CONF.monitor.vtep_db_file,
+                                       empty_db_path,
+                                       self.cfg.CONF.monitor.vtep_path,
+                                       self.sw_name)
+	else:
+            utils.create_vtep_db(self.cfg.CONF.monitor.vtep_db_file,
+                                 empty_db_path,
+                                 self.cfg.CONF.monitor.vtep_path)
+
 
     def get_empty_db_path(self):
-        return "%s/%s.db" %(os.path.dirname(self.cfg.CONF.monitor.vtep_path,self.sw_name)
-    
-    def __initialze_db(self):
-        if not os.path.isfile(self.get_empty_db_path()):
-            utils.create_empty_vtep_db(self.get_empty_db_path(), self.sw_name)
-        utils.create_vtep_db(self.cfg.CONF.monitor.vtep_db_file,
-                             self.get_empty_db_path(),
-                             self.cfg.CONF.monitor.vtep_path)
+        return "%s/%s.db" %(os.path.dirname(self.cfg.CONF.monitor.vtep_db_file),
+                            self.sw_name)
+
 
     def __create_bridge(self):
         utils.add_ovs_bridge(self.sw_name)
@@ -75,17 +83,18 @@ class VtepMonitor(object):
             utils.create_tap_device(self.cfg.CONF.monitor.phy_interface)
             utils.ifup_down(self.cfg.CONF.monitor.phy_interface)
         self.__create_bridge()
-        utils.add_port_to_bridge(self.cfg.CONF.monitor.switch,self.cfg.CONF.monitor.phy_interface)
+        utils.add_port_to_bridge(self.sw_name,self.cfg.CONF.monitor.phy_interface)
         if self.routbale_device:
             utils.ifup_down(self.routbale_device)
-        utils.start_ovs_vtep(self.cfg.CONF.monitor.switch,self.tunnel_ips,
+        utils.start_ovs_vtep(self.sw_name,self.tunnel_ips,
+			     True,
                              self.cfg.CONF.auto_flood,
                              self.cfg.CONF.mtu_fragment)
 
 def main():
     config.init(sys.argv[1:])
     tunnel_ips = list()
-    if cfg.CONF.tunnel_ifs:
+    if config.cfg.CONF.tunnel_ifs:
         tunnel_ips = utils.get_interfaces_ips(config.cfg.CONF.tunnel_ifs)
     else:
         tunnel_ips = config.cfg.CONF.tunnel_ips

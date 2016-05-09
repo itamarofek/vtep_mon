@@ -8,7 +8,7 @@ from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import importutils, strutils
 from nova.api.validation.parameter_types import mac_address
-
+from shutil import copyfile
 import subprocess
 
 LOG = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ def launch(*cmd, **kwargs):
     finally:
         time.sleep(0)
 
-def kill_pid(pid)
+def kill_pid(pid):
     execute('kill', pid)
     
 def process_exist(proc_name):
@@ -81,7 +81,7 @@ def process_exist(proc_name):
 def create_tap_device(device):
     execute( 'ip' ,'tuntap', 'add', 'dev',device, 'mode', 'tap', run_as_root=True)
 
-def add_port_to_bridge(bridge,port, replace = True):
+def add_port_to_bridge(bridge, port, replace = True):
     if replace:
         ovs_vsctl(['--if-exists', 'del-port', bridge, port])
     ovs_vsctl(['--may-exist','add-port', bridge, port])
@@ -183,7 +183,6 @@ def ovs_appctl(args):
     return execute(*cmd, run_as_root=True)
 
 def vtep_ctl(args):
-    print args
     cmd = ['vtep-ctl'] + args
     return execute(*cmd, run_as_root=True)
 
@@ -191,7 +190,7 @@ def ovs_vtep(args):
     cmd = ['ovs-vtep'] + args
     return execute(*cmd, run_as_root=True)
 
-def start_ovs_vtep(switch,ip_list,run_as_deamon=True,mtu_fragment=False):
+def start_ovs_vtep(switch,ip_list,run_as_deamon=True,auto_flood=False, mtu_fragment=False):
     vtep_ctl(['set', 'Physical_Switch', switch, 'tunnel_ips=%s' % ",".join(ip_list)])
     args = ['--log-file=/var/log/openvswitch/ovs-vtep.log',
             '--pidfile=/var/run/openvswitch/ovs-vtep.pid', switch ]
@@ -203,46 +202,41 @@ def start_ovs_vtep(switch,ip_list,run_as_deamon=True,mtu_fragment=False):
         args += ['--detach']
     ovs_vtep (args)
 
-def create_empty_vtep_db(db_file, switch_name):
-    ovsdb_tool(['create', db_file,vtep_path + '/vtep.ovsschema'])
-    ovs_dir = os.path.dirname(db_file)
-    execute('OVS_RUNDIR=%s' % ovs_dir, 'OVS_LOGDIR=%s' % ovs_dir,
-            'OVS_DBDIR=%s'  % ovs_dir, 'OVS_SYSCONFDIR=%s' % ovs_dir,
-            'OVS_PKGDATADIR=%s' % ovs_dir, 'ovsdb-server',
-            '--detach', '--no-chdir' ,'--pidfile=%s/pid' % os_dir,
-            '--remote=ptcp:54999' '--unixctl=%s/unixctl' %ovs_dir, db_file )
-    vtep_ctl( ['--timeout=5', '-vreconnect:emer', '--db=tcp:127.0.0.1:54999',
-              'add-ps', switch_name])
-    ovs_pid = None
-    with open('%s/pid' % os_dir, 'r') as infile:
-        ovs_pid = infile.readline()
-        kill_pid(ovs_pid)
+def create_empty_vtep_db(db_file,empty_db_file,vtep_path,switch_name):
+    create_vtep_db(db_file,empty_db_file,vtep_path,remove_old = False)
+    vtep_ctl(['add-ps', switch_name])
+    copyfile(db_file,empty_db_file)
 
 
-
-def create_vtep_db(db_file,empty_vtep_db,vtep_path,port=6640,remove_old=True):
-    if remove_old:service', 'openvswitch-switch', 'stop
-        try:
-            pid = process_exist('ovs-vtep')
-            if pid :
-                execute('kill', '-HUP', pid, run_as_root=True )
-            execute('service', 'openvswitch-switch', 'stop', run_as_root=True)
-            time.sleep(1)
-            os.remove(db_file)
-            execute('service', 'openvswitch-switch', 'start',run_as_root=True)
-        except OSError:
-            pass
-    execute( 'cp', empty_vtep_db, db_file )
-    ovs_appctl([ '-t', 'ovsdb-server', 'ovsdb-server/add-db',
-            db_file ])
+def start_db_server(db_file,port):
+    ovs_appctl(['-t', 'ovsdb-server', 'ovsdb-server/add-db', db_file ])
     ovs_appctl(['-t', 'ovsdb-server', 'ovsdb-server/add-remote',
                'ptcp:%s' % port])
 
+def create_vtep_db(db_file,empty_vtep_db,vtep_path,port=6640,remove_old=True):
+    if remove_old:
+        pid = process_exist('ovsdb-server')
+        if pid:
+            execute( 'service', 'openvswitch-switch', 'stop',run_as_root=True)
+        copyfile(empty_vtep_db,db_file)
+    if not os.path.isfile (db_file):
+        ovsdb_tool( ['create', db_file, vtep_path + '/vtep.ovsschema'])
+    try:
+        pid = process_exist('ovs-vtep')
+        if pid :
+            execute('kill', '-HUP', pid, run_as_root=True )
+            #execute('service', 'openvswitch-switch', 'stop', run_as_root=True)
+            time.sleep(1)
+        execute('service', 'openvswitch-switch', 'start',run_as_root=True)
+    except OSError:
+        pass
+    start_db_server(db_file,port)
 
 def get_interfaces_ips( interface_list):
     if not interface_list:
         return None
     ip_list = list()
     for if_device in interface_list:
-            ip_list.insert(get_nic_cidr(if_device)[0])
+        tunnel_ip = get_nic_cidr(if_device)[0]
+        ip_list.append(tunnel_ip)
     return ip_list
