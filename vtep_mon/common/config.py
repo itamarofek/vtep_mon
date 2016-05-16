@@ -32,6 +32,12 @@ monitor_opts = [
 
 cfg.CONF.register_opts(monitor_opts, 'monitor')
 
+agent_opts = [
+	cfg.StrOpt('root_helper',help='name of the run as root command')
+]
+
+cfg.CONF.register_opts(agent_opts, 'agent')
+
 LOG = logging.getLogger(__name__)
 
 # import the configuration options

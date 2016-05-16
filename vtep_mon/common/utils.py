@@ -8,7 +8,7 @@ from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import importutils, strutils
 from nova.api.validation.parameter_types import mac_address
-from shutil import copyfile
+#from shutil import copyfile
 import subprocess
 
 LOG = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ def _get_root_helper():
     if CONF.workarounds.disable_rootwrap:
         cmd = 'sudo'
     else:
-        cmd = 'sudo /usr/bin/rootwrap %s' % CONF.rootwrap_config
+        cmd = cfg.CONF.agent.root_helper
     return cmd
 
 def add_to_exe_path(path, as_prefix=True):
@@ -77,6 +77,9 @@ def process_exist(proc_name):
             if proc_name in res[0][1] and pid != os.getpid() and pid != ps_pid:
                 return pid
     return None
+
+def copyfile(from_path,to_path):
+    execute(cp,from_path,to_path,run_as_root=True)
 
 def create_tap_device(device):
     execute( 'ip' ,'tuntap', 'add', 'dev',device, 'mode', 'tap', run_as_root=True)
