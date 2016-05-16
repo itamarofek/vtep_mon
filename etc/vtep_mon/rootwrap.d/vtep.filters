@@ -15,10 +15,12 @@ ovs-vsctl: CommandFilter, ovs-vsctl, root
 vtep-ctl: CommandFilter, vtep-ctl, root
 ovs-vtep: CommandFilter, ovs-vtep, root
 ovs-appctl: CommandFilter, ovs-appctl, root
+ovsdb-client: CommandFilter, ovsdb-client, root
+ovsdb-tool: CommandFilter, ovsdb-tool, root
 # NOTE(yamamoto): of_interface=native doesn't use ovs-ofctl
 ovs-ofctl: CommandFilter, ovs-ofctl, root
 kill_ovsdb_client: KillFilter, root, /usr/bin/ovsdb-client, -9
-ovsdb-client: CommandFilter, ovsdb-client, root
+kill_ovsdb_server: KillFilter, root, /usr/bin/ovsdb-server, -HUP
 xe: CommandFilter, xe, root
 
 # ip_lib
@@ -30,4 +32,5 @@ ifdown: CommandFilter, ifdown, root
 ifconfig: CommandFilter, ifconfig, root
 #service
 service: CommandFilter, service, root
+rm:CommandFilter,rm,root
 cp:CommandFilter,cp,root

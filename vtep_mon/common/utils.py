@@ -78,8 +78,11 @@ def process_exist(proc_name):
                 return pid
     return None
 
+def rmfile(path):
+    execute('rm','-f',path,run_as_root=True)
+
 def copyfile(from_path,to_path):
-    execute(cp,from_path,to_path,run_as_root=True)
+    execute('cp',from_path,to_path,run_as_root=True)
 
 def create_tap_device(device):
     execute( 'ip' ,'tuntap', 'add', 'dev',device, 'mode', 'tap', run_as_root=True)
@@ -206,6 +209,8 @@ def start_ovs_vtep(switch,ip_list,run_as_deamon=True,auto_flood=False, mtu_fragm
     ovs_vtep (args)
 
 def create_empty_vtep_db(db_file,empty_db_file,vtep_path,switch_name):
+    if os.path.isfile (db_file):
+        rmfile(db_file)   
     create_vtep_db(db_file,empty_db_file,vtep_path,remove_old = False)
     vtep_ctl(['add-ps', switch_name])
     copyfile(db_file,empty_db_file)
@@ -228,9 +233,8 @@ def create_vtep_db(db_file,empty_vtep_db,vtep_path,port=6640,remove_old=True):
         pid = process_exist('ovs-vtep')
         if pid :
             execute('kill', '-HUP', pid, run_as_root=True )
-            #execute('service', 'openvswitch-switch', 'stop', run_as_root=True)
             time.sleep(1)
-        execute('service', 'openvswitch-switch', 'start',run_as_root=True)
+        execute('service', 'openvswitch-switch', 'restart',run_as_root=True)
     except OSError:
         pass
     start_db_server(db_file,port)
