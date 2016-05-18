@@ -203,7 +203,7 @@ def start_ovs_vtep(switch,ip_list,run_as_deamon=True,auto_flood=False, mtu_fragm
     if auto_flood:
         args += ['--auto_flood']
     if not mtu_fragment:
-         args += ['--fragment']
+         args += ['--no_fragment']
     if run_as_deamon:
         args += ['--detach']
     ovs_vtep (args)
